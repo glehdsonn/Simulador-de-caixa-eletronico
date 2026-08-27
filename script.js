@@ -1,72 +1,184 @@
 let contas = [];
 let historico = [];
-let proximoId = 1;
+
+const API_CONTAS = "https://6a8f8c4fa12b7de8cc0f75bc.mockapi.io/contas";
+const API_HISTORICO = "https://6a8f8c4fa12b7de8cc0f75bc.mockapi.io/historico";
 const janela = document.querySelector("#dialogo")
 const btn = document.querySelector("#botao")
 
 btn.addEventListener("click", abrirtela);
 
+async function carregarContas() {
+    try {
+        const resposta = await fetch(API_CONTAS);
 
-function Deletar(){
-    let id = Number(document.getElementById("listaContas").value);
-
-
-    for (let i = 0; i < contas.length; i++) {
-        if (contas[i].id === id) {
-            contas.splice(i, 1);
-            alert("Conta removida com sucesso!");
-            atualizarlista();
-            return;
-
+        if (!resposta.ok) {
+            throw new Error("Erro ao carregar contas");
         }
+
+        contas = await resposta.json();
+
+        contas.forEach(conta => {
+            conta.saldo = Number(conta.saldo);
+        });
+
+        atualizarlista();
+
+    } catch (erro) {
+        console.error(erro);
+        alert("Erro ao carregar as contas.");
     }
 }
 
-function depositar(){
-    let id = Number(document.getElementById("listaContas").value);
+async function carregarHistorico() {
+    const resposta = await fetch(API_HISTORICO);
+    historico = await resposta.json();
+
+    atualizarHistorico();
+}
+
+async function Deletar() {
+    let id = document.getElementById("listaContas").value;
+
+    if (id === "") {
+        alert("Selecione uma conta.");
+        return;
+    }
+
+    try {
+        const resposta = await fetch(`${API_CONTAS}/${id}`, {
+            method: "DELETE"
+        });
+
+        if (!resposta.ok) {
+            throw new Error("Erro ao deletar conta");
+        }
+
+        alert("Conta removida com sucesso!");
+
+        await carregarContas();
+
+    } catch (erro) {
+        console.error(erro);
+        alert("Erro ao remover a conta.");
+    }
+}
+
+async function depositar() {
+    let id = document.getElementById("listaContas").value;
     let valor = Number(document.getElementById("valor").value);
 
-    if (valor <= 0) {
+    if (id === "") {
+        alert("Selecione uma conta.");
+        return;
+    }
+
+    if (valor <= 0 || isNaN(valor)) {
         alert("Digite um valor válido para depósito.");
         return;
     }
 
+    let conta = contas.find(conta => String(conta.id) === String(id));
 
-    for (let i = 0; i < contas.length; i++) {
-        if (contas[i].id === id) {
-            contas[i].saldo += valor;
-            registrarHistorico(contas[i], "Depósito", valor);
-            alert("Depósito realizado com sucesso!");
-            atualizarlista();
-            return;
+    if (!conta) {
+        alert("Conta não encontrada.");
+        return;
+    }
+
+    conta.saldo = Number(conta.saldo);
+    conta.saldo += valor;
+
+    try {
+        const resposta = await fetch(`${API_CONTAS}/${id}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                nome: conta.nome,
+                saldo: conta.saldo
+            })
+        });
+
+        if (!resposta.ok) {
+            throw new Error("Erro ao atualizar saldo");
         }
+
+        await registrarHistorico(conta, "Depósito", valor);
+
+        alert("Depósito realizado com sucesso!");
+
+        document.getElementById("valor").value = "";
+
+        await carregarContas();
+
+    } catch (erro) {
+        console.error(erro);
+        alert("Erro ao realizar depósito.");
     }
 }
 
-function sacar(){
-    let id = Number(document.getElementById("listaContas").value);
+async function sacar() {
+    let id = document.getElementById("listaContas").value;
     let valor = Number(document.getElementById("valor").value);
 
-    if (valor <= 0) {
+    if (id === "") {
+        alert("Selecione uma conta.");
+        return;
+    }
+
+    if (valor <= 0 || isNaN(valor)) {
         alert("Digite um valor válido para saque.");
         return;
     }
 
-    for (let i = 0; i < contas.length; i++) {
-        if (contas[i].id === id) {
-            if (contas[i].saldo >= valor) {
-                contas[i].saldo -= valor;
-                registrarHistorico(contas[i], "Saque", valor);
-                alert("Saque realizado com sucesso!");
-                atualizarlista();
-                return;
-            } else {
-                alert("Saldo insuficiente.");
-                return;
-            }
+    let conta = contas.find(conta => String(conta.id) === String(id));
+
+    if (!conta) {
+        alert("Conta não encontrada.");
+        return;
+    }
+
+    conta.saldo = Number(conta.saldo);
+
+    if (conta.saldo < valor) {
+        alert("Saldo insuficiente.");
+        return;
+    }
+
+    conta.saldo -= valor;
+
+    try {
+        const resposta = await fetch(`${API_CONTAS}/${id}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                nome: conta.nome,
+                saldo: conta.saldo
+            })
+        });
+
+        if (!resposta.ok) {
+            throw new Error("Erro ao atualizar saldo");
         }
+
+        await registrarHistorico(conta, "Saque", valor);
+
+        alert("Saque realizado com sucesso!");
+
+        document.getElementById("valor").value = "";
+
+        await carregarContas();
+
+    } catch (erro) {
+        console.error(erro);
+        alert("Erro ao realizar saque.");
     }
 }
+
+
 function atualizarTransferencia() {
     let idOrigem = Number(document.getElementById("origem").value);
     let destino = document.getElementById("destino");
@@ -94,31 +206,51 @@ function atualizarTransferencia() {
 }
 
 
-function cadastrar() {
-    var nome = document.getElementById("nome").value;
-    var saldo = parseFloat(document.getElementById("saldo").value);
+async function cadastrar() {
+    let nome = document.getElementById("nome").value;
+    let saldo = parseFloat(document.getElementById("saldo").value);
 
-    if (nome == ""){
-        alert("Digite o nome da conta: ");
-        return
+    if (nome == "") {
+        alert("Digite o nome da conta.");
+        return;
     }
 
-    if (isNaN(saldo)){
+    if (isNaN(saldo)) {
         saldo = 0;
     }
 
     let conta = {
-        id: proximoId++,
         nome: nome,
         saldo: saldo
     };
 
-    contas.push(conta);
+    try {
+        const resposta = await fetch(API_CONTAS, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(conta)
+        });
 
-    atualizarlista();  
-    janela.close()
+        if (!resposta.ok) {
+            throw new Error("Erro ao cadastrar conta");
+        }
+
+        alert("Conta cadastrada com sucesso!");
+
+        document.getElementById("nome").value = "";
+        document.getElementById("saldo").value = "";
+
+        janela.close();
+
+        await carregarContas();
+
+    } catch (erro) {
+        console.error(erro);
+        alert("Erro ao cadastrar a conta.");
+    }
 }
-
 
 function atualizarlista() {
 
@@ -163,35 +295,113 @@ function abrirtela() {
     janela.showModal()
 }
 
-function transferir() {
-    let idOrigem = Number(document.getElementById("origem").value);
-    let idDestino = Number(document.getElementById("destino").value);
+async function transferir() {
+    let idOrigem = document.getElementById("origem").value;
+    let idDestino = document.getElementById("destino").value;
     let valor = Number(document.getElementById("valorTransferencia").value);
 
-    let contaOrigem = contas.find(conta => conta.id === idOrigem);
-    let contaDestino = contas.find(conta => conta.id === idDestino);
-
-    if (!contaOrigem || !contaDestino) {
-        alert("Selecione contas válidas para transferência.");
+    if (idOrigem === "" || idDestino === "") {
+        alert("Selecione as duas contas.");
         return;
     }
+
+    if (idOrigem === idDestino) {
+        alert("A conta de origem e destino devem ser diferentes.");
+        return;
+    }
+
+    if (valor <= 0 || isNaN(valor)) {
+        alert("Digite um valor válido.");
+        return;
+    }
+
+    let contaOrigem = contas.find(
+        conta => String(conta.id) === String(idOrigem)
+    );
+
+    let contaDestino = contas.find(
+        conta => String(conta.id) === String(idDestino)
+    );
+
+    if (!contaOrigem || !contaDestino) {
+        alert("Conta não encontrada.");
+        return;
+    }
+
+    // Garante que os saldos sejam números
+    contaOrigem.saldo = Number(contaOrigem.saldo);
+    contaDestino.saldo = Number(contaDestino.saldo);
 
     if (contaOrigem.saldo < valor) {
         alert("Saldo insuficiente para transferência.");
         return;
     }
 
+    // Atualiza os saldos
     contaOrigem.saldo -= valor;
     contaDestino.saldo += valor;
-    registrarHistorico(contaOrigem, "Transferência enviada", valor);
-    registrarHistorico(contaDestino, "Transferência recebida", valor);
 
-    alert("Transferência realizada com sucesso!");
-    atualizarlista();
+    try {
+
+        // Atualiza conta de origem na MockAPI
+        const respostaOrigem = await fetch(`${API_CONTAS}/${idOrigem}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                nome: contaOrigem.nome,
+                saldo: contaOrigem.saldo
+            })
+        });
+
+        if (!respostaOrigem.ok) {
+            throw new Error("Erro ao atualizar conta de origem");
+        }
+
+        // Atualiza conta de destino na MockAPI
+        const respostaDestino = await fetch(`${API_CONTAS}/${idDestino}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                nome: contaDestino.nome,
+                saldo: contaDestino.saldo
+            })
+        });
+
+        if (!respostaDestino.ok) {
+            throw new Error("Erro ao atualizar conta de destino");
+        }
+
+        // Registra no histórico
+        await registrarHistorico(
+            contaOrigem,
+            "Transferência enviada",
+            valor
+        );
+
+        await registrarHistorico(
+            contaDestino,
+            "Transferência recebida",
+            valor
+        );
+
+        alert("Transferência realizada com sucesso!");
+
+        document.getElementById("valorTransferencia").value = "";
+
+        // Recarrega as contas da API
+        await carregarContas();
+
+    } catch (erro) {
+        console.error(erro);
+        alert("Erro ao realizar transferência.");
+    }
 }
 
-function registrarHistorico(conta, tipo, valor) {
-
+async function registrarHistorico(conta, tipo, valor) {
     let operacao = {
         data: new Date().toLocaleString("pt-BR"),
         conta: conta.nome,
@@ -200,9 +410,15 @@ function registrarHistorico(conta, tipo, valor) {
         saldo: conta.saldo
     };
 
-    historico.push(operacao);
+    await fetch(API_HISTORICO, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(operacao)
+    });
 
-    atualizarHistorico();
+    await carregarHistorico();
 }
 
 function atualizarHistorico() {
@@ -211,17 +427,23 @@ function atualizarHistorico() {
 
     tabela.innerHTML = "";
 
-    for (let i = 0; i < historico.length; i++) {
+    let historicoInvertido = [...historico].reverse();
+
+    for (let i = 0; i < historicoInvertido.length; i++) {
 
         let linha = document.createElement("tr");
 
         linha.innerHTML =
-        "<td>" + historico[i].data + "</td>" +
-        "<td>" + historico[i].conta + "</td>" +
-        "<td>" + historico[i].tipo + "</td>" +
-        "<td>R$ " + historico[i].valor.toFixed(2) + "</td>" +
-        "<td>R$ " + historico[i].saldo.toFixed(2) + "</td>";
+        "<td>" + historicoInvertido[i].data + "</td>" +
+        "<td>" + historicoInvertido[i].conta + "</td>" +
+        "<td>" + historicoInvertido[i].tipo + "</td>" +
+        "<td>R$ " + Number(historicoInvertido[i].valor).toFixed(2) + "</td>" +
+        "<td>R$ " + Number(historicoInvertido[i].saldo).toFixed(2) + "</td>";
 
         tabela.appendChild(linha);
     }
 }
+
+// CARREGAR OS DADOS QUANDO O SITE ABRIR
+carregarContas();
+carregarHistorico();
