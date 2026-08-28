@@ -444,6 +444,6 @@ function atualizarHistorico() {
     }
 }
 
-// CARREGAR OS DADOS QUANDO O SITE ABRIR
+
 carregarContas();
 carregarHistorico();
